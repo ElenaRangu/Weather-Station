@@ -1,0 +1,119 @@
+#include <LiquidCrystal.h>
+#define LED 5
+#define BUTTON 2
+#define SENSOR A0
+#define DB4 10
+#define DB5 11
+#define DB6 12
+#define DB7 13
+#define EN  4
+#define RS  3
+
+LiquidCrystal lcd(RS, EN, DB4, DB5, DB6, DB7);
+
+
+/* Montajul prima data este oprit*/
+volatile bool state_system = false;
+bool read_state = true;
+float temp = 0;
+float temp_max = -40;
+long time = 0;
+
+void setup()
+{
+  Serial.begin(9600);
+  lcd.begin(16,2);
+  pinMode(LED, OUTPUT);
+  pinMode(BUTTON, INPUT);
+  pinMode(SENSOR, INPUT);
+  attachInterrupt(digitalPinToInterrupt(BUTTON), 
+                  changeState,
+                  RISING);
+}
+
+
+void loop()
+{
+  if(state_system == true)
+  {
+    // Montajul este pornit
+    lcd.setCursor(0,0);
+    lcd.print("Temp=");
+    lcd.setCursor(0,1);
+    lcd.print("Max=");
+    //Pe LCD o sa se afiseze Temperatura medie si temperatura maxima iregistrata
+    // Se face citire la fiecare 125 de milisecunde
+    // Se face fortarea a doar 15 citiri deoarece
+    // 2000 / 16 = 125, ceea ce rezulta 16 citiri.
+
+    if((time % 125 == 0)&&(read_state == true)&&(time != 0))
+    {
+      temp += analogRead(SENSOR);
+      Serial.println(temp);
+    }
+    // Nu se ia in calcul a 16-a citire posibila din intervalul
+    // 0 - 2000 
+
+    if(time == 1875)
+    {
+      read_state = false;
+    }
+    if(time == 2000)
+    {
+      // Se face media de citiri
+      temp /= 15;
+      temp *= 5.0;//inmultire cu tensiunea in volti
+      temp /= 1024;//impartire la rezolutia convertorului incorporat
+      temp = (temp - 0.5) * 100; // se scade offset-ul si
+      //se face scalarea
+      
+      // Se verifica conditia specificata in enunt
+      
+      if(temp > 50)
+      {
+        digitalWrite(LED, HIGH);// Daca este adevarata, se aprinde led-ul rosu
+      }
+      
+      else
+      {
+        digitalWrite(LED, LOW);// Altfel, ramane oprit
+      }
+      // Se verifica daca exista o valoare posibila mai mare
+      // Si se actualizeaza
+      if(temp > temp_max)
+      {
+        temp_max = temp;
+      }
+      // Se afiseaza temperatura medie si temperatura maxima
+      lcd.setCursor(6,0);
+      lcd.print(temp);
+      lcd.setCursor(5,1);
+      lcd.print(temp_max);
+      
+      // Se trece la urmatoarea serie de citiri, resetandu-se
+      // Flag-ul, temperatura, si timpul
+      read_state = true;
+      temp = 0;
+      time = -25;
+    }
+    // Pasul timpului este de 25 de milisecunde
+    time += 25;
+    delay(25);
+  }
+  else
+  {
+    // Montajul este oprit
+    digitalWrite(LED, LOW);
+    lcd.clear();
+    time = 0;
+    temp = 0;
+    read_state = true;
+  }
+}
+
+void changeState()
+{
+  // Se schimba starea sistemului
+
+  state_system = !state_system;
+}
